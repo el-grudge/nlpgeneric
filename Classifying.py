@@ -13,7 +13,8 @@ if __name__ == '__main__':
         # Data and Path information
         frequency_cutoff=25,
         model_state_file='model.pth',
-        predictor_csv='tweets_with_splits_lite.csv',
+        #predictor_csv='tweets_with_splits_lite.csv',
+        predictor_csv='tweets_with_splits_full.csv',
         save_dir='model_storage/',
         vectorizer_file='vectorizer.json',
         # No Model hyper parameters
@@ -54,20 +55,6 @@ if __name__ == '__main__':
 
     # handle dirs
     handle_dirs(args.save_dir)
-
-    if args.reload_from_files:
-        # training from a checkpoint
-        print("Loading dataset and vectorizer")
-        dataset = ReviewDataset.load_dataset_and_load_vectorizer(args.predictor_csv,
-                                                                 args.vectorizer_file)
-    else:
-        print("Loading dataset and creating vectorizer")
-        # create dataset and vectorizer
-        dataset = ReviewDataset.load_dataset_and_make_vectorizer(args.predictor_csv)
-        dataset.save_vectorizer(args.vectorizer_file)
-    vectorizer = dataset.get_vectorizer()
-
-    classifier = ReviewClassifier(num_features=len(vectorizer.predictor_vocab))
 
     # Initialization
     if args.reload_from_files:
@@ -218,8 +205,8 @@ if __name__ == '__main__':
     batch_generator = generate_batches(dataset,
                                        batch_size=args.batch_size,
                                        device=args.device)
-    running_loss = 0.
-    running_acc = 0.
+    running_loss = 0.0
+    running_acc = 0.0
     classifier.eval()
 
     for batch_index, batch_dict in enumerate(batch_generator):
@@ -242,7 +229,8 @@ if __name__ == '__main__':
     print("Test Accuracy: {:.2f}".format(train_state['test_acc']))
 
     # Inference
-    test_predictor = "this is a pretty awesome book"
+    #test_predictor = "this is a pretty awesome book"
+    test_predictor = "this place is lit"
 
     classifier = classifier.cpu()
     prediction = predict_target(test_predictor, classifier, vectorizer, decision_threshold=0.5)
@@ -254,7 +242,7 @@ if __name__ == '__main__':
     fc1_weights = classifier.fc1.weight.detach()[0]
     _, indices = torch.sort(fc1_weights, dim=0, descending=True)
     indices = indices.numpy().tolist()
-
+    '''
     # Top 20 words
     print("Influential words in Positive Reviews:")
     print("--------------------------------------")
@@ -269,3 +257,4 @@ if __name__ == '__main__':
     indices.reverse()
     for i in range(20):
         print(vectorizer.predictor_vocab.lookup_index(indices[i]))
+    '''
