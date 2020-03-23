@@ -229,8 +229,7 @@ if __name__ == '__main__':
     print("Test Accuracy: {:.2f}".format(train_state['test_acc']))
 
     # Inference
-    #test_predictor = "this is a pretty awesome book"
-    test_predictor = "this place is lit"
+    test_predictor = "fires are running wild"
 
     classifier = classifier.cpu()
     prediction = predict_target(test_predictor, classifier, vectorizer, decision_threshold=0.5)
