@@ -241,7 +241,7 @@ if __name__ == '__main__':
     fc1_weights = classifier.fc1.weight.detach()[0]
     _, indices = torch.sort(fc1_weights, dim=0, descending=True)
     indices = indices.numpy().tolist()
-    '''
+
     # Top 20 words
     print("Influential words in Positive Reviews:")
     print("--------------------------------------")
@@ -256,4 +256,3 @@ if __name__ == '__main__':
     indices.reverse()
     for i in range(20):
         print(vectorizer.predictor_vocab.lookup_index(indices[i]))
-    '''
