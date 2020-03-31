@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 
-class ReviewClassifier(nn.Module):
+class Perceptron(nn.Module):
     """ a simple perceptron based classifier """
 
     def __init__(self, num_features):
@@ -10,7 +10,7 @@ class ReviewClassifier(nn.Module):
         Args:
             num_features (int): the size of the input feature vector
         """
-        super(ReviewClassifier, self).__init__()
+        super(Perceptron, self).__init__()
         self.fc1 = nn.Linear(in_features=num_features,
                              out_features=1)
 

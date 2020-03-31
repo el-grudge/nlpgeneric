@@ -1,6 +1,5 @@
 import numpy as np
 import string
-
 from Vocabulary import Vocabulary
 from collections import Counter
 

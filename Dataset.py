@@ -1,6 +1,5 @@
 import json
 import pandas as pd
-
 from torch.utils.data import Dataset, DataLoader
 from Vectorizer import ReviewVectorizer
 from pathlib import Path
@@ -55,7 +54,7 @@ class ReviewDataset(Dataset):
         Returns:
             an instance of ReviewDataset
         """
-        predictor_df = pd.read_csv(predictor_csv)
+        predictor_df = pd.read_csv(Path().joinpath('data', predictor_csv))
         vectorizer = cls.load_vectorizer_only(vectorizer_filepath)
         return cls(predictor_df, vectorizer)
 

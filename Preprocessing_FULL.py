@@ -1,6 +1,5 @@
 import collections
 import pandas as pd
-
 from argparse import Namespace
 from pathlib import Path
 from utils import *
@@ -15,6 +14,7 @@ if __name__ == '__main__':
         val_proportion=0.15,
         test_proportion=0.15,
         output_munged_csv="tweets_with_splits_full.csv",
+        #output_munged_csv='',
         seed=1337
     )
 
@@ -24,11 +24,9 @@ if __name__ == '__main__':
     train_reviews.columns = ['target', 'predictor']
 
     '''
-        test_reviews = pd.read_csv(Path().joinpath('data', args.raw_test_dataset_csv))[['text']]
-        test_reviews = test_reviews[~pd.isnull(test_reviews.text)]
-        test_reviews['target'] = ""
-        test_reviews = test_reviews[['target', 'text']]
-        test_reviews.columns = ['target', 'predictor']
+    test_reviews = pd.read_csv(Path().joinpath('data', args.raw_test_dataset_csv))[['text']]
+    test_reviews = test_reviews[~pd.isnull(test_reviews.text)]
+    test_reviews.columns = ['target', 'predictor']
     '''
 
     # Splitting the subset by target to create our new train, val, and test splits
@@ -75,5 +73,4 @@ if __name__ == '__main__':
 
     final_predictors['target'] = final_predictors.target.apply({0: 'fake', 1: 'real'}.get)
 
-    # final_predictors.to_csv(args.output_munged_csv, index=False)
     final_predictors.to_csv(Path().joinpath('data', args.output_munged_csv), index=False)

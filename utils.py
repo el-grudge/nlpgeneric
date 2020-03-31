@@ -2,7 +2,6 @@ import os
 import re
 import numpy as np
 import torch
-
 from torch.utils.data import DataLoader
 
 
@@ -95,7 +94,7 @@ def predict_target(predictor, classifier, vectorizer, decision_threshold=0.5):
 
         Args:
             predictor (str): the text of the predictor
-            classifier (ReviewClassifier): the trained model
+            classifier (Perceptron): the trained model
             vectorizer (ReviewVectorizer): the corresponding vectorizer
             decision_threshold (float): The numerical boundary which separates the target classes
         """

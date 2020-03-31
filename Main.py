@@ -1,8 +1,9 @@
 import torch.nn as nn
 import torch.optim as optim
-
+import pandas as pd
+from pathlib import Path
 from Dataset import ReviewDataset
-from ReviewClassifier import ReviewClassifier
+from Perceptron import Perceptron
 from utils import *
 from argparse import Namespace
 from tqdm import tqdm
@@ -15,6 +16,7 @@ if __name__ == '__main__':
         model_state_file='model.pth',
         #predictor_csv='tweets_with_splits_lite.csv',
         predictor_csv='tweets_with_splits_full.csv',
+        test_csv='test.csv',
         save_dir='model_storage/',
         vectorizer_file='vectorizer.json',
         # No Model hyper parameters
@@ -22,7 +24,8 @@ if __name__ == '__main__':
         batch_size=128,
         early_stopping_criteria=5,
         learning_rate=0.001,
-        num_epochs=100,
+        #num_epochs=100,
+        num_epochs=1,
         seed=1337,
         # Runtime options
         catch_keyboard_interrupt=True,
@@ -69,7 +72,7 @@ if __name__ == '__main__':
         dataset.save_vectorizer(args.vectorizer_file)
     vectorizer = dataset.get_vectorizer()
 
-    classifier = ReviewClassifier(num_features=len(vectorizer.predictor_vocab))
+    classifier = Perceptron(num_features=len(vectorizer.predictor_vocab))
 
     # Training loop
     classifier = classifier.to(args.device)
@@ -228,6 +231,20 @@ if __name__ == '__main__':
     print("Test loss: {:.3f}".format(train_state['test_loss']))
     print("Test Accuracy: {:.2f}".format(train_state['test_acc']))
 
+    # Application
+    classifier.load_state_dict(torch.load(train_state['model_filename']))
+    classifier = classifier.to(args.device)
+
+    test_predictor = pd.read_csv(Path().joinpath('data', args.test_csv))
+
+    results = []
+    for _, value in test_predictor.iterrows():
+        prediction = predict_target(value['text'], classifier, vectorizer, decision_threshold=0.5)
+        results.append([value['id'], 0 if prediction == 'fake' else 1])
+
+    results = pd.DataFrame(results, columns=['id', 'target'])
+    results.to_csv(Path().joinpath('data', 'results.csv'), index=False)
+    '''
     # Inference
     test_predictor = "fires are running wild"
 
@@ -256,3 +273,4 @@ if __name__ == '__main__':
     indices.reverse()
     for i in range(20):
         print(vectorizer.predictor_vocab.lookup_index(indices[i]))
+'''
