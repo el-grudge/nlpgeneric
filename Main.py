@@ -24,8 +24,8 @@ if __name__ == '__main__':
         batch_size=128,
         early_stopping_criteria=5,
         learning_rate=0.001,
-        #num_epochs=100,
-        num_epochs=1,
+        num_epochs=100,
+        #num_epochs=1,
         seed=1337,
         # Runtime options
         catch_keyboard_interrupt=True,
