@@ -1,10 +1,7 @@
 import torch.nn as nn
-import torch.optim as optim
 import pandas as pd
 from pathlib import Path
 from Dataset import ReviewDataset
-from Perceptron import Perceptron
-from MLP import MLPClassifier
 from utils import *
 from argparse import Namespace
 from tqdm import tqdm
@@ -26,14 +23,18 @@ if __name__ == '__main__':
         batch_size=128,
         early_stopping_criteria=5,
         learning_rate=0.001,
-        num_epochs=100,
-        #num_epochs=1,
+        #num_epochs=100,
+        num_epochs=1,
         seed=1337,
         # Runtime options
         catch_keyboard_interrupt=True,
         cuda=True,
         expand_filepaths_to_save_dir=True,
         reload_from_files=False,
+        classifier_class='Perceptron',
+        #classifier_class='MLP',
+        loss_func = nn.BCEWithLogitsLoss()
+        #loss_func = nn.CrossEntropyLoss()
     )
 
     if args.expand_filepaths_to_save_dir:
@@ -74,23 +75,15 @@ if __name__ == '__main__':
         dataset.save_vectorizer(args.vectorizer_file)
     vectorizer = dataset.get_vectorizer()
 
+    # Classifier
+    dimensions = {
+        'input_dim': len(vectorizer.predictor_vocab),
+        'hidden_dim': args.hidden_dim,
+        'output_dim': len(vectorizer.target_vocab)
+    }
 
-    # Perceptron classifier
-    #classifier = Perceptron(num_features=len(vectorizer.predictor_vocab))
-
-    # MLP classifier
-    classifier = MLPClassifier(input_dim=len(vectorizer.predictor_vocab),
-                                   hidden_dim=args.hidden_dim,
-                                   output_dim=len(vectorizer.target_vocab))
-
-    classifier = classifier.to(args.device)
-
-    #loss_func = nn.BCEWithLogitsLoss()
-    loss_func = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(classifier.parameters(), lr=args.learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
-                                                     mode='min', factor=0.5,
-                                                     patience=1)
+    classifier, loss_func, optimizer, scheduler = \
+        NLPClassifier(args, dimensions, args.loss_func)
 
     train_state = make_train_state(args)
 
@@ -113,36 +106,6 @@ if __name__ == '__main__':
     train_state = training_val_loop(args, train_state, dataset, classifier, loss_func, optimizer, scheduler,
                                     train_bar, val_bar, epoch_bar)
 
-    # compute the loss & accuracy on the test set using the best available model
-
-    classifier.load_state_dict(torch.load(train_state['model_filename']))
-    classifier = classifier.to(args.device)
-
-    dataset.set_split('test')
-    batch_generator = generate_batches(dataset,
-                                       batch_size=args.batch_size,
-                                       device=args.device)
-    running_loss = 0.0
-    running_acc = 0.0
-    classifier.eval()
-
-    for batch_index, batch_dict in enumerate(batch_generator):
-        # compute the output
-        y_pred = classifier(x_in=batch_dict['x_data'].float())
-
-        # compute the loss
-        #loss = loss_func(y_pred, batch_dict['y_target'].float())
-        loss = loss_func(y_pred, batch_dict['y_target'])
-        loss_t = loss.item()
-        running_loss += (loss_t - running_loss) / (batch_index + 1)
-
-        # compute the accuracy
-        acc_t = compute_accuracy(y_pred, batch_dict['y_target'])
-        running_acc += (acc_t - running_acc) / (batch_index + 1)
-
-    train_state['test_loss'] = running_loss
-    train_state['test_acc'] = running_acc
-
     print("Test loss: {:.3f}".format(train_state['test_loss']))
     print("Test Accuracy: {:.2f}".format(train_state['test_acc']))
 
@@ -154,7 +117,7 @@ if __name__ == '__main__':
 
     results = []
     for _, value in test_predictor.iterrows():
-        prediction = predict_target(value['text'], classifier, vectorizer, decision_threshold=0.5)
+        prediction = predict_target(args.classifier_class, value['text'], classifier, vectorizer, decision_threshold=0.5)
         results.append([value['id'], 0 if prediction == 'fake' else 1])
 
     results = pd.DataFrame(results, columns=['id', 'target'])

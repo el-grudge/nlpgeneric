@@ -3,6 +3,9 @@ import re
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+import torch.optim as optim
+from Perceptron import Perceptron
+from MLP import MLPClassifier
 
 
 def make_train_state(args):
@@ -62,17 +65,21 @@ def update_train_state(args, model, train_state):
 
     return train_state
 
-''' works for perceptron, not for mlp
-def compute_accuracy(y_pred, y_target):
+
+def format_target(classifier_class, target):
+    return target if classifier_class == 'MLP' else target.float()
+
+
+def compute_accuracy(classifier, y_pred, y_target):
+    """Predict the target of a predictor"""
     y_target = y_target.cpu()
-    y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()  # .max(dim=1)[1]
+    if classifier == 'Perceptron':
+        y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()
+    elif classifier == 'MLP':
+        _, y_pred_indices = y_pred.max(dim=1)
     n_correct = torch.eq(y_pred_indices, y_target).sum().item()
     return n_correct / len(y_pred_indices) * 100
-'''
-def compute_accuracy(y_pred, y_target):
-    _, y_pred_indices = y_pred.max(dim=1)
-    n_correct = torch.eq(y_pred_indices, y_target).sum().item()
-    return n_correct / len(y_pred_indices) * 100
+
 
 def set_seed_everywhere(seed, cuda):
     np.random.seed(seed)
@@ -93,31 +100,33 @@ def preprocess_text(text):
     return text
 
 
-def predict_target(predictor, classifier, vectorizer, decision_threshold=0.5):
-    """Predict the target of a predictor
+def predict_target(classifier_class, predictor, classifier, vectorizer, decision_threshold=0.5):
+    """Predict the target of a predictor for Perceptron
 
         Args:
             predictor (str): the text of the predictor
             classifier (Perceptron): the trained model
             vectorizer (ReviewVectorizer): the corresponding vectorizer
             decision_threshold (float): The numerical boundary which separates the target classes
+            :param classifier_class: classifier class
         """
     predictor = preprocess_text(predictor)
-
     vectorized_predictor = torch.tensor(vectorizer.vectorize(predictor))
-    #result = classifier(vectorized_predictor.view(1, -1))
-    vectorized_predictor = torch.tensor(vectorized_predictor).view(1, -1)  # Include this line
-    result = classifier(vectorized_predictor, apply_softmax=True)  # Try softmax = False
 
-    #probability_value = F.sigmoid(result).item()
-    #probability_value = torch.sigmoid(result).item() # works for perceptron
-    probability_value, indices = result.max(dim=1)
-    index = indices.item()
-    '''
-    index = 1
-    if probability_value < decision_threshold:
-        index = 0
-    '''
+    if classifier_class == 'Perceptron':
+        result = classifier(vectorized_predictor.view(1, -1))
+
+        probability_value = torch.sigmoid(result).item()
+        index = 1
+        if probability_value < decision_threshold:
+            index = 0
+    elif classifier_class == 'MLP':
+        vectorized_predictor = torch.tensor(vectorized_predictor).view(1, -1)  # Include this line
+        result = classifier(vectorized_predictor, apply_softmax=True)  # Try softmax = False
+
+        probability_value, indices = result.max(dim=1)
+        index = indices.item()
+
     return vectorizer.target_vocab.lookup_index(index)
 
 
@@ -182,8 +191,8 @@ def training_val_loop(args, train_state, dataset, classifier, loss_func, optimiz
                 y_pred = classifier(x_in=batch_dict['x_data'].float())
 
                 # step 3. compute the loss
-                #loss = loss_func(y_pred, batch_dict['y_target'].float())
-                loss = loss_func(y_pred, batch_dict['y_target'])
+                target = format_target(args.classifier_class, batch_dict['y_target'])
+                loss = loss_func(y_pred, target)
                 loss_t = loss.item()
                 running_loss += (loss_t - running_loss) / (batch_index + 1)
 
@@ -194,7 +203,7 @@ def training_val_loop(args, train_state, dataset, classifier, loss_func, optimiz
                 optimizer.step()
                 # -----------------------------------------
                 # compute the accuracy
-                acc_t = compute_accuracy(y_pred, batch_dict['y_target'])
+                acc_t = compute_accuracy(args.classifier_class, y_pred, batch_dict['y_target'])
                 running_acc += (acc_t - running_acc) / (batch_index + 1)
 
                 # update bar
@@ -222,13 +231,13 @@ def training_val_loop(args, train_state, dataset, classifier, loss_func, optimiz
                 y_pred = classifier(x_in=batch_dict['x_data'].float())
 
                 # compute the loss
-                #loss = loss_func(y_pred, batch_dict['y_target'].float())
-                loss = loss_func(y_pred, batch_dict['y_target'])
+                target = format_target(args.classifier_class, batch_dict['y_target'])
+                loss = loss_func(y_pred, target)
                 loss_t = loss.item()
                 running_loss += (loss_t - running_loss) / (batch_index + 1)
 
                 # compute the accuracy
-                acc_t = compute_accuracy(y_pred, batch_dict['y_target'])
+                acc_t = compute_accuracy(args.classifier_class, y_pred, batch_dict['y_target'])
                 running_acc += (acc_t - running_acc) / (batch_index + 1)
 
                 val_bar.set_postfix(loss=running_loss,
@@ -257,4 +266,66 @@ def training_val_loop(args, train_state, dataset, classifier, loss_func, optimiz
     except KeyboardInterrupt:
         print("Exiting loop")
 
+    # compute the loss & accuracy on the test set using the best available model
+
+    classifier.load_state_dict(torch.load(train_state['model_filename']))
+    classifier = classifier.to(args.device)
+
+    dataset.set_split('test')
+    batch_generator = generate_batches(dataset,
+                                       batch_size=args.batch_size,
+                                       device=args.device)
+    running_loss = 0.0
+    running_acc = 0.0
+    classifier.eval()
+
+    for batch_index, batch_dict in enumerate(batch_generator):
+        # compute the output
+        y_pred = classifier(x_in=batch_dict['x_data'].float())
+
+        # compute the loss
+        target = format_target(args.classifier_class, batch_dict['y_target'])
+        loss = loss_func(y_pred, target)
+        loss_t = loss.item()
+        running_loss += (loss_t - running_loss) / (batch_index + 1)
+
+        # compute the accuracy
+        acc_t = compute_accuracy(args.classifier_class, y_pred, batch_dict['y_target'])
+        running_acc += (acc_t - running_acc) / (batch_index + 1)
+
+    train_state['test_loss'] = running_loss
+    train_state['test_acc'] = running_acc
+
     return train_state
+
+
+def NLPClassifier(args, dimensions, loss_func):
+    """Builds a classifier
+
+    Args:
+        args: main arguments
+        classifier_class: classifier class to be defined
+        dimensions: neural network dimensions
+        loss_func: loss function to be used
+
+    Returns:
+        classifier: built classfier
+        loss_func: loss function
+        optimizer: optimizer
+        scheduler
+    """
+    if args.classifier_class == 'Perceptron':
+        classifier = Perceptron(num_features=dimensions['input_dim'])
+    elif args.classifier_class == 'MLP':
+        classifier = MLPClassifier(input_dim=dimensions['input_dim'],
+                                   hidden_dim=dimensions['hidden_dim'],
+                                   output_dim=dimensions['output_dim'])
+
+    classifier = classifier.to(args.device)
+    loss_func = loss_func
+    optimizer = optim.Adam(classifier.parameters(), lr=args.learning_rate)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
+                                                     mode='min', factor=0.5,
+                                                     patience=1)
+
+    return classifier, loss_func, optimizer, scheduler
