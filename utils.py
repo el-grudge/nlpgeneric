@@ -1,11 +1,13 @@
 import os
 import re
+import string
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 import torch.optim as optim
 from Perceptron import Perceptron
 from MLP import MLPClassifier
+from CNN import CNNClassifier
 
 
 def make_train_state(args):
@@ -67,7 +69,7 @@ def update_train_state(args, model, train_state):
 
 
 def format_target(classifier_class, target):
-    return target if classifier_class == 'MLP' else target.float()
+    return target.float() if classifier_class == 'Perceptron' else target
 
 
 def compute_accuracy(classifier, y_pred, y_target):
@@ -77,6 +79,9 @@ def compute_accuracy(classifier, y_pred, y_target):
         y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()
     elif classifier == 'MLP':
         _, y_pred_indices = y_pred.max(dim=1)
+    elif classifier == 'CNN':
+        y_pred_indices = y_pred.max(dim=1)[1]
+
     n_correct = torch.eq(y_pred_indices, y_target).sum().item()
     return n_correct / len(y_pred_indices) * 100
 
@@ -111,9 +116,9 @@ def predict_target(classifier_class, predictor, classifier, vectorizer, decision
             :param classifier_class: classifier class
         """
     predictor = preprocess_text(predictor)
-    vectorized_predictor = torch.tensor(vectorizer.vectorize(predictor))
 
     if classifier_class == 'Perceptron':
+        vectorized_predictor = torch.tensor(vectorizer.vectorize(predictor, classifier_class))
         result = classifier(vectorized_predictor.view(1, -1))
 
         probability_value = torch.sigmoid(result).item()
@@ -121,10 +126,17 @@ def predict_target(classifier_class, predictor, classifier, vectorizer, decision
         if probability_value < decision_threshold:
             index = 0
     elif classifier_class == 'MLP':
-        vectorized_predictor = torch.tensor(vectorized_predictor).view(1, -1)  # Include this line
-        result = classifier(vectorized_predictor, apply_softmax=True)  # Try softmax = False
+        vectorized_predictor = torch.tensor(vectorizer.vectorize(predictor, classifier_class)).view(1, -1)
+        result = classifier(vectorized_predictor, apply_softmax=True)
 
         probability_value, indices = result.max(dim=1)
+        index = indices.item()
+    elif classifier_class == 'CNN':
+        vectorized_predictor = vectorizer.vectorize(predictor, classifier_class)
+        vectorized_predictor = torch.tensor(vectorized_predictor).unsqueeze(0)
+        result = classifier(vectorized_predictor, apply_softmax=True)
+
+        probability_values, indices = result.max(dim=1)
         index = indices.item()
 
     return vectorizer.target_vocab.lookup_index(index)
@@ -299,7 +311,7 @@ def training_val_loop(args, train_state, dataset, classifier, loss_func, optimiz
     return train_state
 
 
-def NLPClassifier(args, dimensions, loss_func):
+def NLPClassifier(args, dimensions):
     """Builds a classifier
 
     Args:
@@ -320,12 +332,21 @@ def NLPClassifier(args, dimensions, loss_func):
         classifier = MLPClassifier(input_dim=dimensions['input_dim'],
                                    hidden_dim=dimensions['hidden_dim'],
                                    output_dim=dimensions['output_dim'])
+    elif args.classifier_class == 'CNN':
+        classifier = CNNClassifier(initial_num_channels=dimensions['input_dim'],
+                      num_classes=dimensions['output_dim'],
+                      num_channels=args.num_channels)
+
 
     classifier = classifier.to(args.device)
-    loss_func = loss_func
+    loss_func = args.loss_func
     optimizer = optim.Adam(classifier.parameters(), lr=args.learning_rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
                                                      mode='min', factor=0.5,
                                                      patience=1)
 
     return classifier, loss_func, optimizer, scheduler
+
+
+def remove_punctuation(s: str):
+    return [x for x in ''.join(char for char in s if char not in string.punctuation).split()]

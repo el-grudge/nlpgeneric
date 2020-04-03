@@ -19,22 +19,25 @@ if __name__ == '__main__':
         vectorizer_file='vectorizer.json',
         # Model hyper parameters
         hidden_dim=300,
+        num_channels=512,
         # Training hyper parameters
         batch_size=128,
         early_stopping_criteria=5,
         learning_rate=0.001,
-        #num_epochs=100,
-        num_epochs=1,
+        num_epochs=100,
+        #num_epochs=1,
         seed=1337,
+        dropout_p=0.1,
         # Runtime options
         catch_keyboard_interrupt=True,
         cuda=True,
         expand_filepaths_to_save_dir=True,
         reload_from_files=False,
-        classifier_class='Perceptron',
+        #classifier_class='Perceptron',
         #classifier_class='MLP',
-        loss_func = nn.BCEWithLogitsLoss()
-        #loss_func = nn.CrossEntropyLoss()
+        classifier_class='CNN',
+        #loss_func = nn.BCEWithLogitsLoss()
+        loss_func = nn.CrossEntropyLoss()
     )
 
     if args.expand_filepaths_to_save_dir:
@@ -66,13 +69,13 @@ if __name__ == '__main__':
     if args.reload_from_files:
         # training from a checkpoint
         print("Loading dataset and vectorizer")
-        dataset = ReviewDataset.load_dataset_and_load_vectorizer(args.predictor_csv,
-                                                                 args.vectorizer_file)
+        dataset = ReviewDataset.load_dataset_and_load_vectorizer(args)
     else:
         print("Loading dataset and creating vectorizer")
         # create dataset and vectorizer
-        dataset = ReviewDataset.load_dataset_and_make_vectorizer(args.predictor_csv)
+        dataset = ReviewDataset.load_dataset_and_make_vectorizer(args)
         dataset.save_vectorizer(args.vectorizer_file)
+
     vectorizer = dataset.get_vectorizer()
 
     # Classifier
@@ -83,7 +86,7 @@ if __name__ == '__main__':
     }
 
     classifier, loss_func, optimizer, scheduler = \
-        NLPClassifier(args, dimensions, args.loss_func)
+        NLPClassifier(args, dimensions)
 
     train_state = make_train_state(args)
 

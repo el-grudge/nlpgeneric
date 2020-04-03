@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 class ReviewDataset(Dataset):
-    def __init__(self, predictor_df, vectorizer):
+    def __init__(self, predictor_df, vectorizer, classifier_class):
         """
         Args:
             predictor_df (pandas.DataFrame): the dataset
@@ -29,9 +29,10 @@ class ReviewDataset(Dataset):
                              'test': (self.test_df, self.test_size)}
 
         self.set_split('train')
+        self._classifier_class = classifier_class
 
     @classmethod
-    def load_dataset_and_make_vectorizer(cls, predictor_csv):
+    def load_dataset_and_make_vectorizer(cls, args):
         """Load dataset and make a new vectorizer from scratch
 
         Args:
@@ -39,12 +40,12 @@ class ReviewDataset(Dataset):
         Returns:
             an instance of ReviewDataset
         """
-        predictor_df = pd.read_csv(Path().joinpath('data', predictor_csv))
+        predictor_df = pd.read_csv(Path().joinpath('data', args.predictor_csv))
         train_predictor_df = predictor_df[predictor_df.split == 'train']
-        return cls(predictor_df, ReviewVectorizer.from_dataframe(train_predictor_df))
+        return cls(predictor_df, ReviewVectorizer.from_dataframe(train_predictor_df), args.classifier_class)
 
     @classmethod
-    def load_dataset_and_load_vectorizer(cls, predictor_csv, vectorizer_filepath):
+    def load_dataset_and_load_vectorizer(cls, args):
         """Load dataset and the corresponding vectorizer.
         Used in the case in the vectorizer has been cached for re-use
 
@@ -54,9 +55,9 @@ class ReviewDataset(Dataset):
         Returns:
             an instance of ReviewDataset
         """
-        predictor_df = pd.read_csv(Path().joinpath('data', predictor_csv))
-        vectorizer = cls.load_vectorizer_only(vectorizer_filepath)
-        return cls(predictor_df, vectorizer)
+        predictor_df = pd.read_csv(Path().joinpath('data', args.predictor_csv))
+        vectorizer = cls.load_vectorizer_only(args.vectorizer_filepath)
+        return cls(predictor_df, vectorizer, args.classifier_class)
 
     @staticmethod
     def load_vectorizer_only(vectorizer_filepath):
@@ -104,9 +105,10 @@ class ReviewDataset(Dataset):
             a dictionary holding the data point's features (x_data) and label (y_target)
         """
         row = self._target_df.iloc[index]
+        classifier_class = self._classifier_class
 
         predictor_vector = \
-            self._vectorizer.vectorize(row.predictor)
+            self._vectorizer.vectorize(row.predictor, classifier_class)
 
         target_index = \
             self._vectorizer.target_vocab.lookup_token(row.target)
