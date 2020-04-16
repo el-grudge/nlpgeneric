@@ -26,6 +26,7 @@ class MLPClassifier(nn.Module):
         Returns:
             the resulting tensor. tensor.shape should be (batch, output_dim)
         """
+        x_in = x_in.float()
         intermediate_vector = F.relu(self.fc1(x_in))
         prediction_vector = self.fc2(intermediate_vector)
 

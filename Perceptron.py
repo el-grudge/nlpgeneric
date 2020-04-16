@@ -25,6 +25,7 @@ class Perceptron(nn.Module):
         Returns:
             the resulting tensor. tensor.shape should be (batch,)
         """
+        x_in = x_in.float()
         y_out = self.fc1(x_in).squeeze()
         if apply_sigmoid:
             y_out = torch.sigmoid(y_out)

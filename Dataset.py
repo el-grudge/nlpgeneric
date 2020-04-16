@@ -1,6 +1,7 @@
 import json
 import pandas as pd
-from torch.utils.data import Dataset, DataLoader
+import torch
+from torch.utils.data import Dataset
 from Vectorizer import ReviewVectorizer
 from pathlib import Path
 
@@ -31,6 +32,18 @@ class ReviewDataset(Dataset):
         self.set_split('train')
         self._classifier_class = classifier_class
 
+        # GLOVE_MODEL
+        # Class weights
+        class_counts = predictor_df.target.value_counts().to_dict()
+
+        def sort_key(item):
+            return self._vectorizer.target_vocab.lookup_token(item[0])
+
+        sorted_counts = sorted(class_counts.items(), key=sort_key)
+        frequencies = [count for _, count in sorted_counts]
+        self.class_weights = 1.0 / torch.tensor(frequencies, dtype=torch.float32)
+
+
     @classmethod
     def load_dataset_and_make_vectorizer(cls, args):
         """Load dataset and make a new vectorizer from scratch
@@ -42,7 +55,8 @@ class ReviewDataset(Dataset):
         """
         predictor_df = pd.read_csv(Path().joinpath('data', args.predictor_csv))
         train_predictor_df = predictor_df[predictor_df.split == 'train']
-        return cls(predictor_df, ReviewVectorizer.from_dataframe(train_predictor_df), args.classifier_class)
+        # return cls(predictor_df, ReviewVectorizer.from_dataframe(train_predictor_df), args.classifier_class)
+        return cls(predictor_df, ReviewVectorizer.from_dataframe(train_predictor_df, args.classifier_class), args.classifier_class) # GLOVE_MODEL
 
     @classmethod
     def load_dataset_and_load_vectorizer(cls, args):
@@ -56,11 +70,11 @@ class ReviewDataset(Dataset):
             an instance of ReviewDataset
         """
         predictor_df = pd.read_csv(Path().joinpath('data', args.predictor_csv))
-        vectorizer = cls.load_vectorizer_only(args.vectorizer_filepath)
+        vectorizer = cls.load_vectorizer_only(args.vectorizer_file, args.classifier_class) # GLOVE_MODEL
         return cls(predictor_df, vectorizer, args.classifier_class)
 
     @staticmethod
-    def load_vectorizer_only(vectorizer_filepath):
+    def load_vectorizer_only(vectorizer_filepath, classifier_class): # GLOVE_MODEL
         """a static method for loading the vectorizer from file
 
         Args:
@@ -69,7 +83,7 @@ class ReviewDataset(Dataset):
             an instance of ReviewVectorizer
         """
         with open(vectorizer_filepath) as fp:
-            return ReviewVectorizer.from_serializable(json.load(fp))
+            return ReviewVectorizer.from_serializable(json.load(fp), classifier_class) # GLOVE_MODEL
 
     def save_vectorizer(self, vectorizer_filepath):
         """saves the vectorizer to disk using json

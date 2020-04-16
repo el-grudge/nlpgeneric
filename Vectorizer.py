@@ -1,8 +1,7 @@
-import numpy as np
-import string
 from utils import *
 from Vocabulary import Vocabulary
 from collections import Counter
+from SequenceVocabulary import SequenceVocabulary
 
 
 class ReviewVectorizer(object):
@@ -17,23 +16,7 @@ class ReviewVectorizer(object):
         self.predictor_vocab = predictor_vocab
         self.target_vocab = target_vocab
         self._max_predictor_length = max_predictor_length
-    '''
-    def vectorize(self, predictor):
-        """Create a collapsed one-hit vector for the predictor
 
-        Args:
-            predictor (str): the predictor
-        Returns:
-            one_hot (np.ndarray): the collapsed one-hot encoding
-        """
-        one_hot_matrix = np.zeros(len(self.predictor_vocab), dtype=np.float32)
-
-        for token in predictor.split(" "):
-            if token not in string.punctuation:
-                one_hot_matrix[self.predictor_vocab.lookup_token(token)] = 1
-
-        return one_hot_matrix
-    '''
     def vectorize(self, predictor, classifier_class):
         if classifier_class == 'CNN':
             one_hot_matrix_size = (len(self.predictor_vocab), self._max_predictor_length)
@@ -42,6 +25,21 @@ class ReviewVectorizer(object):
             for position_index, word in enumerate(remove_punctuation(predictor)):
                 word_index = self.predictor_vocab.lookup_token(word)
                 one_hot_matrix[word_index][position_index] = 1
+
+        elif classifier_class == 'GloVe':
+            # +1 if only using begin_seq, +2 if using both begin and end seq tokens
+            vector_length = self._max_predictor_length + 2
+            indices = [self.predictor_vocab.begin_seq_index]
+            indices.extend(self.predictor_vocab.lookup_token(token) for token in remove_punctuation(predictor)) # predictor.split(" ")
+            indices.append(self.predictor_vocab.end_seq_index)
+
+            if vector_length < 0:
+                vector_length = len(indices)
+
+            one_hot_matrix = np.zeros(vector_length, dtype=np.int64)
+            one_hot_matrix[:len(indices)] = indices
+            one_hot_matrix[len(indices):] = self.predictor_vocab.mask_index
+
         else:
             one_hot_matrix = np.zeros(len(self.predictor_vocab), dtype=np.float32)
 
@@ -53,7 +51,8 @@ class ReviewVectorizer(object):
 
 
     @classmethod
-    def from_dataframe(cls, predictor_df, cutoff=25):
+    #def from_dataframe(cls, predictor_df, cutoff=25):
+    def from_dataframe(cls, predictor_df, classifier, cutoff=25): # GLOVE_MODEL
         """Instantiate the vectorizer from the dataset dataframe
 
         Args:
@@ -62,7 +61,11 @@ class ReviewVectorizer(object):
         Returns:
             an instance of the ReviewVectorizer
         """
-        predictor_vocab = Vocabulary(add_unk=True)
+        if classifier == 'GloVe':
+            predictor_vocab = SequenceVocabulary()
+        else:
+            predictor_vocab = Vocabulary(add_unk=True)
+
         target_vocab = Vocabulary(add_unk=False)
         max_predictor_length = 0
 
@@ -85,7 +88,7 @@ class ReviewVectorizer(object):
         return cls(predictor_vocab, target_vocab, max_predictor_length) # for CNN
 
     @classmethod
-    def from_serializable(cls, contents):
+    def from_serializable(cls, contents, classifier_class): # GLOVE_MODEL
         """Instantiate a ReviewVectorizer from a serializable dictionary
 
         Args:
@@ -93,7 +96,11 @@ class ReviewVectorizer(object):
         Returns:
             an instance of the ReviewVectorizer class
         """
-        predictor_vocab = Vocabulary.from_serializable(contents['predictor_vocab'])
+        if classifier_class == 'GloVe': # GLOVE_MODEL
+            predictor_vocab = SequenceVocabulary.from_serializable(contents['predictor_vocab']) # GLOVE_MODEL
+        else:
+            predictor_vocab = Vocabulary.from_serializable(contents['predictor_vocab'])
+
         target_vocab = Vocabulary.from_serializable(contents['target_vocab'])
 
         return cls(predictor_vocab=predictor_vocab, target_vocab=target_vocab,

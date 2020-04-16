@@ -3,6 +3,8 @@ import pandas as pd
 from argparse import Namespace
 from pathlib import Path
 from utils import *
+#import matplotlib.pyplot as plt
+#import seaborn as sns
 
 
 if __name__ == '__main__':
@@ -14,7 +16,6 @@ if __name__ == '__main__':
         val_proportion=0.15,
         test_proportion=0.15,
         output_munged_csv="tweets_with_splits_full.csv",
-        #output_munged_csv='',
         seed=1337
     )
 
@@ -22,12 +23,6 @@ if __name__ == '__main__':
     train_reviews = pd.read_csv(Path().joinpath('data', args.raw_train_dataset_csv))[['target', 'text']]
     train_reviews = train_reviews[~pd.isnull(train_reviews.text)]
     train_reviews.columns = ['target', 'predictor']
-
-    '''
-    test_reviews = pd.read_csv(Path().joinpath('data', args.raw_test_dataset_csv))[['text']]
-    test_reviews = test_reviews[~pd.isnull(test_reviews.text)]
-    test_reviews.columns = ['target', 'predictor']
-    '''
 
     # Splitting the subset by target to create our new train, val, and test splits
     by_rating = collections.defaultdict(list)
@@ -66,10 +61,18 @@ if __name__ == '__main__':
     # Write split data to file
     final_predictors = pd.DataFrame(final_list)
 
+    # Fill the 'split' value for rows with null 'split' value
     for i in final_predictors[pd.isnull(final_predictors.split)].index:
         final_predictors.loc[i, 'split'] = final_predictors.loc[i-1, 'split']
 
     final_predictors.predictor = final_predictors.predictor.apply(preprocess_text)
+    '''
+    # Plot
+    x = final_predictors.target.value_counts()
+    sns.barplot(x.index, x)
+    plt.gca().set_ylabel('samples')
+    plt.show()
+    '''
 
     final_predictors['target'] = final_predictors.target.apply({0: 'fake', 1: 'real'}.get)
 

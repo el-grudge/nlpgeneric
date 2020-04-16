@@ -10,22 +10,23 @@ if __name__ == '__main__':
 
     args = Namespace(
         # Data and Path information
-        frequency_cutoff=25,
+        frequency_cutoff=25,  #=5
         model_state_file='model.pth',
-        #predictor_csv='tweets_with_splits_lite.csv',
-        predictor_csv='tweets_with_splits_full.csv',
+        predictor_csv='tweets_with_splits_full.csv',  # ='tweets_with_splits_lite.csv',
         test_csv='test.csv',
         save_dir='model_storage/',
         vectorizer_file='vectorizer.json',
         # Model hyper parameters
+        glove_filepath='/home/minasonbol/PycharmProjects/nlpbasicperceptron/.vector_cache/glove.6B.100d.txt', # GLOVE_MODEL
+        use_glove=False, # GLOVE_MODEL
+        embedding_size=100, # GLOVE_MODEL
         hidden_dim=300,
-        num_channels=512,
+        num_channels=256,  # =512,
         # Training hyper parameters
-        batch_size=128,
+        batch_size=128,  # =10,
         early_stopping_criteria=5,
         learning_rate=0.001,
-        num_epochs=100,
-        #num_epochs=1,
+        num_epochs=100,  #1,
         seed=1337,
         dropout_p=0.1,
         # Runtime options
@@ -33,11 +34,7 @@ if __name__ == '__main__':
         cuda=True,
         expand_filepaths_to_save_dir=True,
         reload_from_files=False,
-        #classifier_class='Perceptron',
-        #classifier_class='MLP',
-        classifier_class='CNN',
-        #loss_func = nn.BCEWithLogitsLoss()
-        loss_func = nn.CrossEntropyLoss()
+        classifier_class='MLP' #'CNN', #'GloVe', #'Perceptron'
     )
 
     if args.expand_filepaths_to_save_dir:
@@ -56,7 +53,6 @@ if __name__ == '__main__':
         args.cuda = False
 
     print("Using CUDA: {}".format(args.cuda))
-
     args.device = torch.device("cuda" if args.cuda else "cpu")
 
     # Set seed for reproducibility
@@ -66,6 +62,8 @@ if __name__ == '__main__':
     handle_dirs(args.save_dir)
 
     # Initialization
+    args.use_glove = True # GLOVE_MODEL
+
     if args.reload_from_files:
         # training from a checkpoint
         print("Loading dataset and vectorizer")
@@ -78,15 +76,34 @@ if __name__ == '__main__':
 
     vectorizer = dataset.get_vectorizer()
 
+    # GLOVE_MODEL
+    # Use GloVe or randomly initialized embeddings
+    if args.use_glove:
+        words = vectorizer.predictor_vocab._token_to_idx.keys()
+        embeddings = make_embedding_matrix(glove_filepath=args.glove_filepath,
+                                           words=words)
+        print("Using pre-trained embeddings")
+    else:
+        print("Not using pre-trained embeddings")
+        embeddings = None
+
     # Classifier
     dimensions = {
         'input_dim': len(vectorizer.predictor_vocab),
         'hidden_dim': args.hidden_dim,
-        'output_dim': len(vectorizer.target_vocab)
+        'output_dim': len(vectorizer.target_vocab),
+        'dropout_p': args.dropout_p, # GLOVE_MODEL
+        'pretrained_embeddings': embeddings, # GLOVE_MODEL
+        'padding_idx': 0 # GLOVE_MODEL
     }
 
-    classifier, loss_func, optimizer, scheduler = \
-        NLPClassifier(args, dimensions)
+    classifier = NLPClassifier(args, dimensions)
+    # check why BCE doesn't work with CNN and MLP
+    loss_func = nn.BCEWithLogitsLoss() if args.classifier_class == 'Perceptron' else nn.CrossEntropyLoss() #dataset.class_weights
+    optimizer = optim.Adam(classifier.parameters(), lr=args.learning_rate)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
+                                                     mode='min', factor=0.5,
+                                                     patience=1)
 
     train_state = make_train_state(args)
 
@@ -109,8 +126,17 @@ if __name__ == '__main__':
     train_state = training_val_loop(args, train_state, dataset, classifier, loss_func, optimizer, scheduler,
                                     train_bar, val_bar, epoch_bar)
 
+    print("Training loss: {:.3f}".format(train_state['train_loss'][0]))
+    print("Training Accuracy: {:.2f}".format(train_state['train_acc'][0]))
+    print("Training Confusion Matrix: ", train_state['train_confusion_matrix'])
+
+    print("Validation loss: {:.3f}".format(train_state['val_loss'][0]))
+    print("Validation Accuracy: {:.2f}".format(train_state['val_acc'][0]))
+    print("Validation Confusion Matrix: ", train_state['val_confusion_matrix'])
+
     print("Test loss: {:.3f}".format(train_state['test_loss']))
     print("Test Accuracy: {:.2f}".format(train_state['test_acc']))
+    print("Test Confusion Matrix: ", train_state['test_confusion_matrix'])
 
     # Application
     classifier.load_state_dict(torch.load(train_state['model_filename']))

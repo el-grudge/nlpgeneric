@@ -43,6 +43,7 @@ class CNNClassifier(nn.Module):
         Returns:
             the resulting tensor. tensor.shape should be (batch, num_classes)
         """
+        x_in = x_in.float()
         features = self.convnet(x_in).squeeze(dim=2)
 
         prediction_vector = self.fc(features)
