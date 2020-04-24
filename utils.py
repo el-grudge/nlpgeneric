@@ -371,10 +371,12 @@ def NLPClassifier(args, dimensions):
     """
     if args.classifier_class == 'Perceptron':
         classifier = Perceptron(num_features=dimensions['input_dim'])
+
     elif args.classifier_class == 'MLP':
         classifier = MLPClassifier(input_dim=dimensions['input_dim'],
                                    hidden_dim=dimensions['hidden_dim'],
                                    output_dim=dimensions['output_dim'])
+
     elif args.classifier_class == 'CNN':
         classifier = CNNClassifier(initial_num_channels=dimensions['input_dim'],
                       num_classes=dimensions['output_dim'],

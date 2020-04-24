@@ -34,9 +34,134 @@ if __name__ == '__main__':
         cuda=True,
         expand_filepaths_to_save_dir=True,
         reload_from_files=False,
-        classifier_class='MLP' #'CNN', #'GloVe', #'Perceptron'
+        classifier_class='' #'CNN', #'MLP', #'Perceptron', #'GloVe'
     )
 
+    if args.expand_filepaths_to_save_dir:
+        args.vectorizer_file = os.path.join(args.save_dir,
+                                            args.vectorizer_file)
+
+        args.model_state_file = os.path.join(args.save_dir,
+                                             args.model_state_file)
+
+        print("Expanded filepaths: ")
+        print("\t{}".format(args.vectorizer_file))
+        print("\t{}".format(args.model_state_file))
+
+    # Check CUDA
+    if not torch.cuda.is_available():
+        args.cuda = False
+
+    print("Using CUDA: {}".format(args.cuda))
+    args.device = torch.device("cuda" if args.cuda else "cpu")
+
+    # Set seed for reproducibility
+    set_seed_everywhere(args.seed, args.cuda)
+
+    # handle dirs
+    handle_dirs(args.save_dir)
+
+    errors = {}
+    for i in ['Perceptron', 'MLP', 'CNN', 'GloVe']:
+        args.classifier_class = i
+
+        if args.reload_from_files:
+            # training from a checkpoint
+            print("Loading dataset and vectorizer")
+            dataset = ReviewDataset.load_dataset_and_load_vectorizer(args)
+        else:
+            print("Loading dataset and creating vectorizer")
+            # create dataset and vectorizer
+            dataset = ReviewDataset.load_dataset_and_make_vectorizer(args)
+            dataset.save_vectorizer(args.vectorizer_file)
+
+        vectorizer = dataset.get_vectorizer()
+
+        # Initialization
+        if i == 'GloVe':
+            args.use_glove = True  # GLOVE_MODEL
+
+        # GLOVE_MODEL
+        # Use GloVe or randomly initialized embeddings
+        if args.use_glove:
+            words = vectorizer.predictor_vocab._token_to_idx.keys()
+            embeddings = make_embedding_matrix(glove_filepath=args.glove_filepath,
+                                               words=words)
+            print("Using pre-trained embeddings")
+        else:
+            print("Not using pre-trained embeddings")
+            embeddings = None
+
+        # Classifier
+        dimensions = {
+            'input_dim': len(vectorizer.predictor_vocab),
+            'hidden_dim': args.hidden_dim,
+            'output_dim': len(vectorizer.target_vocab),
+            'dropout_p': args.dropout_p,  # GLOVE_MODEL
+            'pretrained_embeddings': embeddings,  # GLOVE_MODEL
+            'padding_idx': 0  # GLOVE_MODEL
+        }
+
+        classifier = NLPClassifier(args, dimensions)
+        # check why BCE doesn't work with CNN and MLP
+        loss_func = nn.BCEWithLogitsLoss() if args.classifier_class == 'Perceptron' else nn.CrossEntropyLoss()  # dataset.class_weights
+        optimizer = optim.Adam(classifier.parameters(), lr=args.learning_rate)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
+                                                         mode='min', factor=0.5,
+                                                         patience=1)
+
+        train_state = make_train_state(args)
+
+        epoch_bar = tqdm(desc='training routine',
+                         total=args.num_epochs,
+                         position=0)
+
+        dataset.set_split('train')
+        train_bar = tqdm(desc='split=train',
+                         total=dataset.get_num_batches(args.batch_size),
+                         position=1,
+                         leave=True)
+        dataset.set_split('val')
+        val_bar = tqdm(desc='split=val',
+                       total=dataset.get_num_batches(args.batch_size),
+                       position=1,
+                       leave=True)
+
+        # Training loop
+        train_state = training_val_loop(args, train_state, dataset, classifier, loss_func, optimizer, scheduler,
+                                        train_bar, val_bar, epoch_bar)
+
+        # print("Training loss: {:.3f}".format(train_state['train_loss'][0]))
+        # print("Training Accuracy: {:.2f}".format(train_state['train_acc'][0]))
+        # print("Training Confusion Matrix: ", train_state['train_confusion_matrix'])
+
+        # print("Validation loss: {:.3f}".format(train_state['val_loss'][0]))
+        # print("Validation Accuracy: {:.2f}".format(train_state['val_acc'][0]))
+        # print("Validation Confusion Matrix: ", train_state['val_confusion_matrix'])
+
+        # print("{} Test loss: {}".format(args.classifier_class, train_state['test_loss']))
+        # print("Test Accuracy: {:.2f}".format(train_state['test_acc']))
+        # print("Test Confusion Matrix: ", train_state['test_confusion_matrix'])
+        errors[i] = train_state['test_loss']
+
+        # Application
+        classifier.load_state_dict(torch.load(train_state['model_filename']))
+        classifier = classifier.to(args.device)
+
+        test_predictor = pd.read_csv(Path().joinpath('data', args.test_csv))
+
+        results = []
+        for _, value in test_predictor.iterrows():
+            prediction = predict_target(args.classifier_class, value['text'], classifier, vectorizer,
+                                        decision_threshold=0.5)
+            results.append([value['id'], 0 if prediction == 'fake' else 1])
+
+        results = pd.DataFrame(results, columns=['id', 'target'])
+        results.to_csv(Path().joinpath('data', 'results.csv'), index=False)
+
+    print(errors)
+
+'''
     if args.expand_filepaths_to_save_dir:
         args.vectorizer_file = os.path.join(args.save_dir,
                                             args.vectorizer_file)
@@ -151,7 +276,8 @@ if __name__ == '__main__':
 
     results = pd.DataFrame(results, columns=['id', 'target'])
     results.to_csv(Path().joinpath('data', 'results.csv'), index=False)
-    '''
+
+    ### AFTER TRIAL HASH FROM HERE
     # Inference
     test_predictor = "fires are running wild"
 
