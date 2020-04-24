@@ -76,12 +76,15 @@ def update_train_state(args, model, train_state):
 
 
 def format_target(classifier_class, target):
-    return target.float() if classifier_class == 'Perceptron' else target
+    return target
+    #return target.float() if classifier_class == 'Perceptron' else target
+
 
 def compute_confusion_matrix(classifier, y_pred, y_target):
     y_target = y_target.cpu()
     if classifier == 'Perceptron':
-        y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()
+        #y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()
+        _, y_pred_indices = y_pred.max(dim=1)
     elif classifier == 'MLP':
         _, y_pred_indices = y_pred.max(dim=1)
     elif classifier == 'CNN':
@@ -96,7 +99,8 @@ def compute_accuracy(classifier, y_pred, y_target):
     """Predict the target of a predictor"""
     y_target = y_target.cpu()
     if classifier == 'Perceptron':
-        y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()
+        #y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()
+        _, y_pred_indices = y_pred.max(dim=1)
     elif classifier == 'MLP':
         _, y_pred_indices = y_pred.max(dim=1)
     elif classifier == 'CNN':
@@ -144,17 +148,19 @@ def predict_target(classifier_class, predictor, classifier, vectorizer, decision
         vectorized_predictor = torch.tensor(vectorizer.vectorize(predictor, classifier_class))
         result = classifier(vectorized_predictor.view(1, -1))
 
-        probability_value = torch.sigmoid(result).item()
+        #probability_value = torch.sigmoid(result).item()
+        probability_value = torch.sigmoid(result.max(dim=1).values).item()
         index = 1
         if probability_value < decision_threshold:
             index = 0
+
     elif classifier_class == 'MLP':
         vectorized_predictor = torch.tensor(vectorizer.vectorize(predictor, classifier_class)).view(1, -1)
         result = classifier(vectorized_predictor, apply_softmax=True)
 
         probability_value, indices = result.max(dim=1)
         index = indices.item()
-    #elif classifier_class == 'CNN':
+
     else:
         vectorized_predictor = vectorizer.vectorize(predictor, classifier_class)
         vectorized_predictor = torch.tensor(vectorized_predictor).unsqueeze(0)

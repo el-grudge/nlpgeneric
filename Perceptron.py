@@ -11,8 +11,9 @@ class Perceptron(nn.Module):
             num_features (int): the size of the input feature vector
         """
         super(Perceptron, self).__init__()
+        #self.fc1 = nn.Linear(in_features=num_features, out_features=1)
         self.fc1 = nn.Linear(in_features=num_features,
-                             out_features=1)
+                             out_features=2)
 
     def forward(self, x_in, apply_sigmoid=False):
         """The forward pass of the classifier
@@ -26,7 +27,8 @@ class Perceptron(nn.Module):
             the resulting tensor. tensor.shape should be (batch,)
         """
         x_in = x_in.float()
-        y_out = self.fc1(x_in).squeeze()
+        #y_out = self.fc1(x_in).squeeze()
+        y_out = self.fc1(x_in)
         if apply_sigmoid:
             y_out = torch.sigmoid(y_out)
         return y_out
