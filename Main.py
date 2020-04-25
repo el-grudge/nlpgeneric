@@ -26,7 +26,7 @@ if __name__ == '__main__':
         batch_size=128,  # =10,
         early_stopping_criteria=5,
         learning_rate=0.001,
-        num_epochs=100,  #1,
+        num_epochs=10,  #1,
         seed=1337,
         dropout_p=0.1,
         # Runtime options
@@ -55,16 +55,16 @@ if __name__ == '__main__':
     print("Using CUDA: {}".format(args.cuda))
     args.device = torch.device("cuda" if args.cuda else "cpu")
 
-    # Set seed for reproducibility
-    set_seed_everywhere(args.seed, args.cuda)
-
     # handle dirs
     handle_dirs(args.save_dir)
 
     errors = {}
     #for i in ['Perceptron', 'MLP', 'CNN', 'GloVe']:
-    for i in ['Perceptron']:
+    for i in ['CNN', 'MLP', 'Perceptron']:
         args.classifier_class = i
+
+        # Set seed for reproducibility
+        set_seed_everywhere(args.seed, args.cuda)
 
         if args.reload_from_files:
             # training from a checkpoint
@@ -159,7 +159,7 @@ if __name__ == '__main__':
             results.append([value['id'], 0 if prediction == 'fake' else 1])
 
         results = pd.DataFrame(results, columns=['id', 'target'])
-        results.to_csv(Path().joinpath('data', 'results.csv'), index=False)
+        results.to_csv(Path().joinpath('data', '{}_results.csv'.format(i)), index=False)
 
     print(errors)
 
