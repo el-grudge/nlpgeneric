@@ -13,7 +13,7 @@ from sklearn.metrics import confusion_matrix
 
 
 def make_train_state(args):
-    return {'stop_early': False,
+    return {'stop_early': args.stop_early,
             'early_stopping_step': 0,
             'early_stopping_best_val': 1e8,
             'learning_rate': args.learning_rate,
@@ -300,10 +300,6 @@ def training_val_loop(args, train_state, dataset, classifier, loss_func, optimiz
                                              train_state=train_state)
 
             scheduler.step(train_state['val_loss'][-1])
-
-            train_bar.n = 0
-            val_bar.n = 0
-            epoch_bar.update()
 
             if train_state['stop_early']:
                 break

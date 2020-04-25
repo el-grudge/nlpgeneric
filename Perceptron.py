@@ -12,8 +12,7 @@ class Perceptron(nn.Module):
         """
         super(Perceptron, self).__init__()
         #self.fc1 = nn.Linear(in_features=num_features, out_features=1)
-        self.fc1 = nn.Linear(in_features=num_features,
-                             out_features=2)
+        self.fc1 = nn.Linear(in_features=num_features, out_features=2)
 
     def forward(self, x_in, apply_sigmoid=False):
         """The forward pass of the classifier

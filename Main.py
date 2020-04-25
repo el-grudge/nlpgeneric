@@ -22,11 +22,12 @@ if __name__ == '__main__':
         embedding_size=100, # GLOVE_MODEL
         hidden_dim=300,
         num_channels=256,  # =512,
+        stop_early=False,
         # Training hyper parameters
         batch_size=128,  # =10,
         early_stopping_criteria=5,
         learning_rate=0.001,
-        num_epochs=10,  #1,
+        num_epochs=20,  #1,
         seed=1337,
         dropout_p=0.1,
         # Runtime options
@@ -60,7 +61,7 @@ if __name__ == '__main__':
 
     errors = {}
     #for i in ['Perceptron', 'MLP', 'CNN', 'GloVe']:
-    for i in ['CNN', 'MLP', 'Perceptron']:
+    for i in ['MLP']:
         args.classifier_class = i
 
         # Set seed for reproducibility

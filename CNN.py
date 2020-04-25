@@ -45,7 +45,6 @@ class CNNClassifier(nn.Module):
         """
         x_in = x_in.float()
         features = self.convnet(x_in).squeeze(dim=2)
-
         prediction_vector = self.fc(features)
 
         if apply_softmax:
