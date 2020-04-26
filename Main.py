@@ -27,7 +27,7 @@ if __name__ == '__main__':
         batch_size=128,  # =10,
         early_stopping_criteria=5,
         learning_rate=0.001,
-        num_epochs=20,  #1,
+        num_epochs=1,  #1,
         seed=1337,
         dropout_p=0.1,
         # Runtime options
@@ -35,7 +35,9 @@ if __name__ == '__main__':
         cuda=True,
         expand_filepaths_to_save_dir=True,
         reload_from_files=False,
-        classifier_class='' #'CNN', #'MLP', #'Perceptron', #'GloVe'
+        classifier_class ='', #'CNN', #'MLP', #'Perceptron', #'GloVe'
+        loss_func_str = '', #nn.BCEWithLogitsLoss(weight=None), #CrossEntropyLoss
+        with_weights = False,
     )
 
     if args.expand_filepaths_to_save_dir:
@@ -59,110 +61,148 @@ if __name__ == '__main__':
     # handle dirs
     handle_dirs(args.save_dir)
 
-    errors = {}
-    #for i in ['Perceptron', 'MLP', 'CNN', 'GloVe']:
-    for i in ['MLP']:
-        args.classifier_class = i
+    error_list = []
+    errors = {'Classifier': None,
+              'loss_func': None,
+              'Weights': None,
+              'Accuracy': None,
+              'Precision': None,
+              'Recall': None,
+              'F1 Score': None}
 
-        # Set seed for reproducibility
-        set_seed_everywhere(args.seed, args.cuda)
+    for i in ['Perceptron', 'MLP', 'CNN', 'GloVe']:
+    #for i in ['GloVe']:
+        for l in [nn.BCEWithLogitsLoss(), nn.CrossEntropyLoss()]:
+        #for l in [nn.BCEWithLogitsLoss()]:
+            for w in [False, True]:
+            #for w in [False]:
+                args.classifier_class = i
+                args.loss_func_str = remove_punctuation(str(l.type(str)))[0]
 
-        if args.reload_from_files:
-            # training from a checkpoint
-            print("Loading dataset and vectorizer")
-            dataset = ReviewDataset.load_dataset_and_load_vectorizer(args)
-        else:
-            print("Loading dataset and creating vectorizer")
-            # create dataset and vectorizer
-            dataset = ReviewDataset.load_dataset_and_make_vectorizer(args)
-            dataset.save_vectorizer(args.vectorizer_file)
+                # Set seed for reproducibility
+                set_seed_everywhere(args.seed, args.cuda)
 
-        vectorizer = dataset.get_vectorizer()
+                if args.reload_from_files:
+                    # training from a checkpoint
+                    print("Loading dataset and vectorizer")
+                    dataset = ReviewDataset.load_dataset_and_load_vectorizer(args)
+                else:
+                    print("Loading dataset and creating vectorizer")
+                    # create dataset and vectorizer
+                    dataset = ReviewDataset.load_dataset_and_make_vectorizer(args)
+                    dataset.save_vectorizer(args.vectorizer_file)
 
-        # Initialization
-        if i == 'GloVe':
-            args.use_glove = True  # GLOVE_MODEL
+                vectorizer = dataset.get_vectorizer()
 
-        # GLOVE_MODEL
-        # Use GloVe or randomly initialized embeddings
-        if args.use_glove:
-            words = vectorizer.predictor_vocab._token_to_idx.keys()
-            embeddings = make_embedding_matrix(glove_filepath=args.glove_filepath,
-                                               words=words)
-            print("Using pre-trained embeddings")
-        else:
-            print("Not using pre-trained embeddings")
-            embeddings = None
+                # Initialization
+                if i == 'GloVe':
+                    args.use_glove = True  # GLOVE_MODEL
 
-        # Classifier
-        dimensions = {
-            'input_dim': len(vectorizer.predictor_vocab),
-            'hidden_dim': args.hidden_dim,
-            'output_dim': len(vectorizer.target_vocab),
-            'dropout_p': args.dropout_p,  # GLOVE_MODEL
-            'pretrained_embeddings': embeddings,  # GLOVE_MODEL
-            'padding_idx': 0  # GLOVE_MODEL
-        }
+                # GLOVE_MODEL
+                # Use GloVe or randomly initialized embeddings
+                if args.use_glove:
+                    words = vectorizer.predictor_vocab._token_to_idx.keys()
+                    embeddings = make_embedding_matrix(glove_filepath=args.glove_filepath,
+                                                       words=words)
+                    print("Using pre-trained embeddings")
+                else:
+                    print("Not using pre-trained embeddings")
+                    embeddings = None
 
-        classifier = NLPClassifier(args, dimensions)
-        # check why BCE doesn't work with CNN and MLP
-        #loss_func = nn.BCEWithLogitsLoss() if args.classifier_class == 'Perceptron' else nn.CrossEntropyLoss()  # dataset.class_weights
-        loss_func = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(classifier.parameters(), lr=args.learning_rate)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
-                                                         mode='min', factor=0.5,
-                                                         patience=1)
+                # Classifier
+                dimensions = {
+                    'input_dim': len(vectorizer.predictor_vocab),
+                    'hidden_dim': args.hidden_dim,
+                    'output_dim': len(vectorizer.target_vocab),
+                    'dropout_p': args.dropout_p,  # GLOVE_MODEL
+                    'pretrained_embeddings': embeddings,  # GLOVE_MODEL
+                    'padding_idx': 0  # GLOVE_MODEL
+                }
 
-        train_state = make_train_state(args)
+                classifier = NLPClassifier(args, dimensions)
+                # check why BCE doesn't work with CNN and MLP
+                # loss_func = nn.BCEWithLogitsLoss() if args.classifier_class == 'Perceptron' else nn.CrossEntropyLoss()  # dataset.class_weights
+                # loss_func = nn.CrossEntropyLoss()
+                loss_func = l
+                if w:
+                    if args.loss_func_str == 'BCEWithLogitsLoss':
+                        loss_func.pos_weight = pos_weight(dataset.train_df.target.value_counts(), args.batch_size)
+                    elif args.loss_func_str == 'CrossEntropyLoss':
+                        loss_func.weight = dataset.class_weights
+                else:
+                    loss_func.weight = None
+                optimizer = optim.Adam(classifier.parameters(), lr=args.learning_rate)
+                scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
+                                                                 mode='min', factor=0.5,
+                                                                 patience=1)
 
-        epoch_bar = tqdm(desc='training routine',
-                         total=args.num_epochs,
-                         position=0)
+                train_state = make_train_state(args)
 
-        dataset.set_split('train')
-        train_bar = tqdm(desc='split=train',
-                         total=dataset.get_num_batches(args.batch_size),
-                         position=1,
-                         leave=True)
-        dataset.set_split('val')
-        val_bar = tqdm(desc='split=val',
-                       total=dataset.get_num_batches(args.batch_size),
-                       position=1,
-                       leave=True)
+                epoch_bar = tqdm(desc='training routine',
+                                 total=args.num_epochs,
+                                 position=0)
 
-        # Training loop
-        train_state = training_val_loop(args, train_state, dataset, classifier, loss_func, optimizer, scheduler,
-                                        train_bar, val_bar, epoch_bar)
+                dataset.set_split('train')
+                train_bar = tqdm(desc='split=train',
+                                 total=dataset.get_num_batches(args.batch_size),
+                                 position=1,
+                                 leave=True)
+                dataset.set_split('val')
+                val_bar = tqdm(desc='split=val',
+                               total=dataset.get_num_batches(args.batch_size),
+                               position=1,
+                               leave=True)
 
-        # print("Training loss: {:.3f}".format(train_state['train_loss'][0]))
-        # print("Training Accuracy: {:.2f}".format(train_state['train_acc'][0]))
-        # print("Training Confusion Matrix: ", train_state['train_confusion_matrix'])
+                # Training loop
+                train_state = training_val_loop(args, train_state, dataset, classifier, loss_func, optimizer, scheduler,
+                                                train_bar, val_bar, epoch_bar)
 
-        # print("Validation loss: {:.3f}".format(train_state['val_loss'][0]))
-        # print("Validation Accuracy: {:.2f}".format(train_state['val_acc'][0]))
-        # print("Validation Confusion Matrix: ", train_state['val_confusion_matrix'])
+                # print("Training loss: {:.3f}".format(train_state['train_loss'][0]))
+                # print("Training Accuracy: {:.2f}".format(train_state['train_acc'][0]))
+                # print("Training Confusion Matrix: ", train_state['train_confusion_matrix'])
 
-        # print("{} Test loss: {}".format(args.classifier_class, train_state['test_loss']))
-        # print("Test Accuracy: {:.2f}".format(train_state['test_acc']))
-        # print("Test Confusion Matrix: ", train_state['test_confusion_matrix'])
-        errors[i] = train_state['test_acc']
+                # print("Validation loss: {:.3f}".format(train_state['val_loss'][0]))
+                # print("Validation Accuracy: {:.2f}".format(train_state['val_acc'][0]))
+                # print("Validation Confusion Matrix: ", train_state['val_confusion_matrix'])
 
-        # Application
-        classifier.load_state_dict(torch.load(train_state['model_filename']))
-        classifier = classifier.to(args.device)
+                # print("{} Test loss: {}".format(args.classifier_class, train_state['test_loss']))
+                # print("Test Accuracy: {:.2f}".format(train_state['test_acc']))
+                # print("Test Confusion Matrix: ", train_state['test_confusion_matrix'])
 
-        test_predictor = pd.read_csv(Path().joinpath('data', args.test_csv))
+                # Application
+                classifier.load_state_dict(torch.load(train_state['model_filename']))
+                classifier = classifier.to(args.device)
 
-        results = []
-        for _, value in test_predictor.iterrows():
-            prediction = predict_target(args.classifier_class, value['text'], classifier, vectorizer,
-                                        decision_threshold=0.5)
-            results.append([value['id'], 0 if prediction == 'fake' else 1])
+                test_predictor = pd.read_csv(Path().joinpath('data', args.test_csv))
 
-        results = pd.DataFrame(results, columns=['id', 'target'])
-        results.to_csv(Path().joinpath('data', '{}_results.csv'.format(i)), index=False)
+                results = []
+                for _, value in test_predictor.iterrows():
+                    prediction = predict_target(args,
+                                                value['text'],
+                                                classifier,
+                                                vectorizer,
+                                                decision_threshold=0.5)
+                    results.append([value['id'], 0 if prediction == 'fake' else 1])
 
-    print(errors)
+                results = pd.DataFrame(results, columns=['id', 'target'])
+                results.to_csv(Path().joinpath('data', '{}_{}_{}_results.csv'.format(i, w, args.loss_func_str)), index=False)
+
+                tn, fp, fn, tp = train_state['test_confusion_matrix']
+                precision = tp / (tp + fp)
+                recall = tp / (tp + fn)
+                f1_score = 2 * ((precision*recall)/(precision+recall))
+
+                errors = {'Classifier': i,
+                          'loss_func': args.loss_func_str,
+                          'Weights': w,
+                          'Accuracy': train_state['test_acc'],
+                          'Precision': precision,
+                          'Recall':  recall,
+                          'F1 Score': f1_score
+                          }
+                error_list.append(errors)
+
+    print(pd.DataFrame(error_list))
 
     '''
     # Inference

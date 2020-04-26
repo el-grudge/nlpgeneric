@@ -6,7 +6,7 @@ import torch.nn.functional as F
 class GloVeClassifier(nn.Module):
     def __init__(self, embedding_size, num_embeddings, num_channels,
                  hidden_dim, num_classes, dropout_p,
-                 pretrained_embeddings=None, padding_idx=0):
+                 pretrained_embeddings=None, padding_idx=0, loss_func=None):
         """
         Args:
             embedding_size (int): size of the embedding vectors
@@ -51,9 +51,10 @@ class GloVeClassifier(nn.Module):
 
         self._dropout_p = dropout_p
         self.fc1 = nn.Linear(num_channels, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, num_classes)
+        #self.fc2 = nn.Linear(hidden_dim, num_classes) #CrossEntropyLoss
+        self.fc2 = nn.Linear(hidden_dim, 1) if loss_func == 'BCEWithLogitsLoss' else nn.Linear(hidden_dim, num_classes)
 
-    def forward(self, x_in, apply_softmax=False):
+    def forward(self, loss_func, x_in, apply_softmax=False):
         """The forward pass of the classifier
 
         Args:
@@ -77,7 +78,8 @@ class GloVeClassifier(nn.Module):
 
         # mlp classifier
         intermediate_vector = F.relu(F.dropout(self.fc1(features), p=self._dropout_p))
-        prediction_vector = self.fc2(intermediate_vector)
+        #prediction_vector = self.fc2(intermediate_vector) #CrossEntropyLoss
+        prediction_vector = self.fc2(intermediate_vector).squeeze() if loss_func == 'BCEWithLogitsLoss' else self.fc2(intermediate_vector)
 
         if apply_softmax:
             prediction_vector = F.softmax(prediction_vector, dim=1)

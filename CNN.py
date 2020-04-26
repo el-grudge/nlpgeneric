@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 class CNNClassifier(nn.Module):
-    def __init__(self, initial_num_channels, num_classes, num_channels):
+    def __init__(self, initial_num_channels, num_classes, num_channels, loss_func):
         """
         Args:
             initial_num_channels (int): size of the incoming feature vector
@@ -30,9 +30,10 @@ class CNNClassifier(nn.Module):
                       kernel_size=3),
             nn.ELU()
         )
-        self.fc = nn.Linear(num_channels, num_classes)
+        #self.fc = nn.Linear(num_channels, num_classes)
+        self.fc = nn.Linear(num_channels, 1) if loss_func == 'BCEWithLogitsLoss' else nn.Linear(num_channels, num_classes)
 
-    def forward(self, x_in, apply_softmax=False):
+    def forward(self, loss_func, x_in, apply_softmax=False):
         """The forward pass of the classifier
 
         Args:
@@ -45,7 +46,8 @@ class CNNClassifier(nn.Module):
         """
         x_in = x_in.float()
         features = self.convnet(x_in).squeeze(dim=2)
-        prediction_vector = self.fc(features)
+        #prediction_vector = self.fc(features)
+        prediction_vector = self.fc(features).squeeze() if loss_func == 'BCEWithLogitsLoss' else self.fc(features)
 
         if apply_softmax:
             prediction_vector = F.softmax(prediction_vector, dim=1)

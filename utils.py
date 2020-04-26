@@ -75,42 +75,75 @@ def update_train_state(args, model, train_state):
     return train_state
 
 
+def format_target(loss_func, target):
+    return target.float() if loss_func == 'BCEWithLogitsLoss' else target
+
+'''
 def format_target(classifier_class, target):
-    return target
-    #return target.float() if classifier_class == 'Perceptron' else target
+    #return target #CrossEntropyLoss
+    return target.float() if classifier_class == 'Perceptron' else target #BCEWithLogitsLoss
+    #return target.float() if loss_func == 'BCEWithLogitsLoss' else target
+'''
 
 
-def compute_confusion_matrix(classifier, y_pred, y_target):
+def compute_confusion_matrix(loss_func, y_pred, y_target):
     y_target = y_target.cpu()
-    if classifier == 'Perceptron':
-        #y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()
-        _, y_pred_indices = y_pred.max(dim=1)
-    elif classifier == 'MLP':
-        _, y_pred_indices = y_pred.max(dim=1)
-    elif classifier == 'CNN':
-        y_pred_indices = y_pred.max(dim=1)[1]
-    elif classifier == 'GloVe':
-        y_pred_indices = y_pred.max(dim=1)[1]
+    if loss_func == 'BCEWithLogitsLoss':
+        y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long() #BCEWithLogitsLoss
+    else:
+        y_pred_indices = y_pred.max(dim=1)[1] #CrossEntropyLoss
 
     return confusion_matrix(y_target, y_pred_indices).ravel()
 
-
-def compute_accuracy(classifier, y_pred, y_target):
-    """Predict the target of a predictor"""
+'''
+def compute_confusion_matrix(classifier, y_pred, y_target):
     y_target = y_target.cpu()
     if classifier == 'Perceptron':
-        #y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()
-        _, y_pred_indices = y_pred.max(dim=1)
+        y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long() #BCEWithLogitsLoss
+        #_, y_pred_indices = y_pred.max(dim=1) #CrossEntropyLoss
     elif classifier == 'MLP':
-        _, y_pred_indices = y_pred.max(dim=1)
+        y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long() #BCEWithLogitsLoss
+        #_, y_pred_indices = y_pred.max(dim=1)
     elif classifier == 'CNN':
         y_pred_indices = y_pred.max(dim=1)[1]
     elif classifier == 'GloVe':
+        y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()  # BCEWithLogitsLoss
+        #y_pred_indices = y_pred.max(dim=1)[1]
+
+    return confusion_matrix(y_target, y_pred_indices).ravel()
+'''
+
+
+def compute_accuracy(loss_func, y_pred, y_target):
+    """Predict the target of a predictor"""
+    y_target = y_target.cpu()
+    if loss_func == 'BCEWithLogitsLoss':
+        y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()  # BCEWithLogitsLoss
+    else:
         y_pred_indices = y_pred.max(dim=1)[1]
 
     n_correct = torch.eq(y_pred_indices, y_target).sum().item()
     return n_correct / len(y_pred_indices) * 100
 
+'''
+def compute_accuracy(classifier, y_pred, y_target):
+    """Predict the target of a predictor"""
+    y_target = y_target.cpu()
+    if classifier == 'Perceptron':
+        y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long() #BCEWithLogitsLoss
+        #_, y_pred_indices = y_pred.max(dim=1) #CrossEntropyLoss
+    elif classifier == 'MLP':
+        y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()  # BCEWithLogitsLoss
+        #_, y_pred_indices = y_pred.max(dim=1)
+    elif classifier == 'CNN':
+        y_pred_indices = y_pred.max(dim=1)[1]
+    elif classifier == 'GloVe':
+        y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()  # BCEWithLogitsLoss
+        #y_pred_indices = y_pred.max(dim=1)[1]
+
+    n_correct = torch.eq(y_pred_indices, y_target).sum().item()
+    return n_correct / len(y_pred_indices) * 100
+'''
 
 def set_seed_everywhere(seed, cuda):
     np.random.seed(seed)
@@ -132,6 +165,64 @@ def preprocess_text(text):
     return text
 
 
+def predict_target(args, predictor, classifier, vectorizer, decision_threshold=0.5):
+    """Predict the target of a predictor for Perceptron
+
+        Args:
+            predictor (str): the text of the predictor
+            classifier (Perceptron): the trained model
+            vectorizer (ReviewVectorizer): the corresponding vectorizer
+            decision_threshold (float): The numerical boundary which separates the target classes
+            :param classifier_class: classifier class
+    """
+    predictor = preprocess_text(predictor)
+
+    if args.classifier_class == 'Perceptron':
+        vectorized_predictor = torch.tensor(vectorizer.vectorize(predictor, args.classifier_class))
+        result = classifier(args.loss_func_str, vectorized_predictor.view(1, -1))
+
+        if args.loss_func_str == 'BCEWithLogitsLoss':
+            probability_value = torch.sigmoid(result).item()
+        else:
+            probability_value = torch.sigmoid(result.max(dim=1).values).item()  # CrossEntropyLoss
+
+        index = 1
+        if probability_value < decision_threshold:
+            index = 0
+
+    elif args.classifier_class == 'MLP':
+        vectorized_predictor = torch.tensor(vectorizer.vectorize(predictor, args.classifier_class)).view(1, -1)
+
+        if args.loss_func_str == 'BCEWithLogitsLoss':
+            #result = classifier(args.loss_func_str, vectorized_predictor.view(1, -1))  # BCEWithLogitsLoss
+            result = classifier(args.loss_func_str, vectorized_predictor.view(1, -1))  # BCEWithLogitsLoss
+            probability_value = torch.sigmoid(result).item()  # BCEWithLogitsLoss
+            index = 1
+            if probability_value < decision_threshold:
+                index = 0
+        else:
+            result = classifier(args.loss_func_str, vectorized_predictor, apply_softmax=True)  # CrossEntropyLoss
+            probability_value, indices = result.max(dim=1)  # CrossEntropyLoss
+            index = indices.item()
+
+    else:
+        vectorized_predictor = torch.tensor(vectorizer.vectorize(predictor, args.classifier_class)).unsqueeze(0)
+
+        if args.loss_func_str == 'BCEWithLogitsLoss':
+            result = classifier(args.loss_func_str, vectorized_predictor)  # BCEWithLogitsLoss
+            probability_value = torch.sigmoid(result).item()  # BCEWithLogitsLoss
+            index = 1
+            if probability_value < decision_threshold:
+                index = 0
+        else:
+            result = classifier(args.loss_func_str, vectorized_predictor, apply_softmax=True)
+            probability_values, indices = result.max(dim=1)
+            index = indices.item()
+
+    return vectorizer.target_vocab.lookup_index(index)
+
+
+'''
 def predict_target(classifier_class, predictor, classifier, vectorizer, decision_threshold=0.5):
     """Predict the target of a predictor for Perceptron
 
@@ -148,28 +239,41 @@ def predict_target(classifier_class, predictor, classifier, vectorizer, decision
         vectorized_predictor = torch.tensor(vectorizer.vectorize(predictor, classifier_class))
         result = classifier(vectorized_predictor.view(1, -1))
 
-        #probability_value = torch.sigmoid(result).item()
-        probability_value = torch.sigmoid(result.max(dim=1).values).item()
+        probability_value = torch.sigmoid(result).item() #BCEWithLogitsLoss
+        #probability_value = torch.sigmoid(result.max(dim=1).values).item() #CrossEntropyLoss
         index = 1
         if probability_value < decision_threshold:
             index = 0
 
     elif classifier_class == 'MLP':
         vectorized_predictor = torch.tensor(vectorizer.vectorize(predictor, classifier_class)).view(1, -1)
-        result = classifier(vectorized_predictor, apply_softmax=True)
+        #result = classifier(vectorized_predictor, apply_softmax=True) #CrossEntropyLoss
+        result = classifier(vectorized_predictor.view(1, -1)) #BCEWithLogitsLoss
 
-        probability_value, indices = result.max(dim=1)
-        index = indices.item()
+        #probability_value, indices = result.max(dim=1) #CrossEntropyLoss
+        #index = indices.item()
+
+        probability_value = torch.sigmoid(result).item()  # BCEWithLogitsLoss
+        index = 1
+        if probability_value < decision_threshold:
+            index = 0
 
     else:
         vectorized_predictor = vectorizer.vectorize(predictor, classifier_class)
         vectorized_predictor = torch.tensor(vectorized_predictor).unsqueeze(0)
-        result = classifier(vectorized_predictor, apply_softmax=True)
+        #result = classifier(vectorized_predictor, apply_softmax=True)
 
-        probability_values, indices = result.max(dim=1)
-        index = indices.item()
+        #probability_values, indices = result.max(dim=1)
+        #index = indices.item()
+
+        result = classifier(vectorized_predictor.view(1, -1))  # BCEWithLogitsLoss
+        probability_value = torch.sigmoid(result).item()  # BCEWithLogitsLoss
+        index = 1
+        if probability_value < decision_threshold:
+            index = 0
 
     return vectorizer.target_vocab.lookup_index(index)
+'''
 
 
 def generate_batches(dataset, batch_size, shuffle=True,
@@ -230,10 +334,12 @@ def training_val_loop(args, train_state, dataset, classifier, loss_func, optimiz
                 optimizer.zero_grad()
 
                 # step 2. compute the output
-                y_pred = classifier(x_in=batch_dict['x_data'])
+                #y_pred = classifier(x_in=batch_dict['x_data'])
+                y_pred = classifier(args.loss_func_str, x_in=batch_dict['x_data'])
 
                 # step 3. compute the loss
-                target = format_target(args.classifier_class, batch_dict['y_target'])
+                #target = format_target(args.classifier_class, batch_dict['y_target'])
+                target = format_target(args.loss_func_str, batch_dict['y_target'])
                 loss = loss_func(y_pred, target)
                 loss_t = loss.item()
                 running_loss += (loss_t - running_loss) / (batch_index + 1)
@@ -245,10 +351,9 @@ def training_val_loop(args, train_state, dataset, classifier, loss_func, optimiz
                 optimizer.step()
                 # -----------------------------------------
                 # compute the accuracy
-                acc_t = compute_accuracy(args.classifier_class, y_pred, batch_dict['y_target'])
+                #acc_t = compute_accuracy(args.classifier_class, y_pred, batch_dict['y_target'])
+                acc_t = compute_accuracy(args.loss_func_str, y_pred, batch_dict['y_target'])
                 running_acc += (acc_t - running_acc) / (batch_index + 1)
-                # compute the confusion matrix
-                conf_matrix = compute_confusion_matrix(args.classifier_class, y_pred, batch_dict['y_target'])
 
                 # update bar
                 train_bar.set_postfix(loss=running_loss,
@@ -273,19 +378,20 @@ def training_val_loop(args, train_state, dataset, classifier, loss_func, optimiz
 
             for batch_index, batch_dict in enumerate(batch_generator):
                 # compute the output
-                y_pred = classifier(x_in=batch_dict['x_data'])
+                #y_pred = classifier(x_in=batch_dict['x_data'])
+                y_pred = classifier(args.loss_func_str, x_in=batch_dict['x_data'])
 
                 # compute the loss
-                target = format_target(args.classifier_class, batch_dict['y_target'])
+                #target = format_target(args.classifier_class, batch_dict['y_target'])
+                target = format_target(args.loss_func_str, batch_dict['y_target'])
                 loss = loss_func(y_pred, target)
                 loss_t = loss.item()
                 running_loss += (loss_t - running_loss) / (batch_index + 1)
 
                 # compute the accuracy
-                acc_t = compute_accuracy(args.classifier_class, y_pred, batch_dict['y_target'])
+                #acc_t = compute_accuracy(args.classifier_class, y_pred, batch_dict['y_target'])
+                acc_t = compute_accuracy(args.loss_func_str, y_pred, batch_dict['y_target'])
                 running_acc += (acc_t - running_acc) / (batch_index + 1)
-                # compute the confusion matrix
-                conf_matrix = compute_confusion_matrix(args.classifier_class, y_pred, batch_dict['y_target'])
 
                 val_bar.set_postfix(loss=running_loss,
                                     acc=running_acc,
@@ -329,19 +435,22 @@ def training_val_loop(args, train_state, dataset, classifier, loss_func, optimiz
 
     for batch_index, batch_dict in enumerate(batch_generator):
         # compute the output
-        y_pred = classifier(x_in=batch_dict['x_data'])
+        #y_pred = classifier(x_in=batch_dict['x_data'])
+        y_pred = classifier(args.loss_func_str, x_in=batch_dict['x_data'])
 
         # compute the loss
-        target = format_target(args.classifier_class, batch_dict['y_target'])
+        #target = format_target(args.classifier_class, batch_dict['y_target'])
+        target = format_target(args.loss_func_str, batch_dict['y_target'])
         loss = loss_func(y_pred, target)
         loss_t = loss.item()
         running_loss += (loss_t - running_loss) / (batch_index + 1)
 
         # compute the accuracy
-        acc_t = compute_accuracy(args.classifier_class, y_pred, batch_dict['y_target'])
+        #acc_t = compute_accuracy(args.classifier_class, y_pred, batch_dict['y_target'])
+        acc_t = compute_accuracy(args.loss_func_str, y_pred, batch_dict['y_target'])
         running_acc += (acc_t - running_acc) / (batch_index + 1)
         # compute the confusion matrix
-        tn, fp, fn, tp = compute_confusion_matrix(args.classifier_class, y_pred, batch_dict['y_target'])
+        tn, fp, fn, tp = compute_confusion_matrix(args.loss_func_str, y_pred, batch_dict['y_target'])
         running_tn += (tn - running_tn) / (batch_index + 1)
         running_fp += (fp - running_fp) / (batch_index + 1)
         running_fn += (fn - running_fn) / (batch_index + 1)
@@ -372,17 +481,19 @@ def NLPClassifier(args, dimensions):
         scheduler
     """
     if args.classifier_class == 'Perceptron':
-        classifier = Perceptron(num_features=dimensions['input_dim'])
+        classifier = Perceptron(num_features=dimensions['input_dim'], loss_func=args.loss_func_str)
 
     elif args.classifier_class == 'MLP':
         classifier = MLPClassifier(input_dim=dimensions['input_dim'],
                                    hidden_dim=dimensions['hidden_dim'],
-                                   output_dim=dimensions['output_dim'])
+                                   output_dim=dimensions['output_dim'],
+                                   loss_func=args.loss_func_str)
 
     elif args.classifier_class == 'CNN':
         classifier = CNNClassifier(initial_num_channels=dimensions['input_dim'],
                       num_classes=dimensions['output_dim'],
-                      num_channels=args.num_channels)
+                      num_channels=args.num_channels,
+                      loss_func=args.loss_func_str)
 
     # GLOVE_MODEL
     elif args.classifier_class == 'GloVe':
@@ -393,7 +504,8 @@ def NLPClassifier(args, dimensions):
                                     num_classes=dimensions['output_dim'],
                                     dropout_p=args.dropout_p,
                                     pretrained_embeddings=dimensions['pretrained_embeddings'],
-                                    padding_idx=0)
+                                    padding_idx=0,
+                                    loss_func=args.loss_func_str)
 
     classifier = classifier.to(args.device)
 
@@ -447,3 +559,9 @@ def make_embedding_matrix(glove_filepath, words):
             final_embeddings[i, :] = embedding_i
 
     return final_embeddings
+
+
+def pos_weight(class_counts, batch_size):
+    pos_class = class_counts['real']
+    neg_class = class_counts['fake']
+    return torch.as_tensor([neg_class/pos_class]*batch_size, dtype=float)
