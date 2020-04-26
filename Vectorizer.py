@@ -51,7 +51,6 @@ class ReviewVectorizer(object):
 
 
     @classmethod
-    #def from_dataframe(cls, predictor_df, cutoff=25):
     def from_dataframe(cls, predictor_df, classifier, cutoff=25): # GLOVE_MODEL
         """Instantiate the vectorizer from the dataset dataframe
 

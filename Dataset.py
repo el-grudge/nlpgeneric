@@ -55,7 +55,6 @@ class ReviewDataset(Dataset):
         """
         predictor_df = pd.read_csv(Path().joinpath('data', args.predictor_csv))
         train_predictor_df = predictor_df[predictor_df.split == 'train']
-        # return cls(predictor_df, ReviewVectorizer.from_dataframe(train_predictor_df), args.classifier_class)
         return cls(predictor_df, ReviewVectorizer.from_dataframe(train_predictor_df, args.classifier_class), args.classifier_class) # GLOVE_MODEL
 
     @classmethod

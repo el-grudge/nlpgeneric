@@ -30,7 +30,6 @@ class CNNClassifier(nn.Module):
                       kernel_size=3),
             nn.ELU()
         )
-        #self.fc = nn.Linear(num_channels, num_classes)
         self.fc = nn.Linear(num_channels, 1) if loss_func == 'BCEWithLogitsLoss' else nn.Linear(num_channels, num_classes)
 
     def forward(self, loss_func, x_in, apply_softmax=False):
@@ -46,7 +45,6 @@ class CNNClassifier(nn.Module):
         """
         x_in = x_in.float()
         features = self.convnet(x_in).squeeze(dim=2)
-        #prediction_vector = self.fc(features)
         prediction_vector = self.fc(features).squeeze() if loss_func == 'BCEWithLogitsLoss' else self.fc(features)
 
         if apply_softmax:

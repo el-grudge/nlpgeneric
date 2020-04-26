@@ -51,7 +51,6 @@ class GloVeClassifier(nn.Module):
 
         self._dropout_p = dropout_p
         self.fc1 = nn.Linear(num_channels, hidden_dim)
-        #self.fc2 = nn.Linear(hidden_dim, num_classes) #CrossEntropyLoss
         self.fc2 = nn.Linear(hidden_dim, 1) if loss_func == 'BCEWithLogitsLoss' else nn.Linear(hidden_dim, num_classes)
 
     def forward(self, loss_func, x_in, apply_softmax=False):
@@ -78,7 +77,6 @@ class GloVeClassifier(nn.Module):
 
         # mlp classifier
         intermediate_vector = F.relu(F.dropout(self.fc1(features), p=self._dropout_p))
-        #prediction_vector = self.fc2(intermediate_vector) #CrossEntropyLoss
         prediction_vector = self.fc2(intermediate_vector).squeeze() if loss_func == 'BCEWithLogitsLoss' else self.fc2(intermediate_vector)
 
         if apply_softmax:

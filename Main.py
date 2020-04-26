@@ -5,6 +5,7 @@ from Dataset import ReviewDataset
 from utils import *
 from argparse import Namespace
 from tqdm import tqdm
+import torch.optim as optim
 
 if __name__ == '__main__':
 
@@ -27,7 +28,7 @@ if __name__ == '__main__':
         batch_size=128,  # =10,
         early_stopping_criteria=5,
         learning_rate=0.001,
-        num_epochs=1,  #1,
+        num_epochs=20,  #1,
         seed=1337,
         dropout_p=0.1,
         # Runtime options
@@ -35,8 +36,8 @@ if __name__ == '__main__':
         cuda=True,
         expand_filepaths_to_save_dir=True,
         reload_from_files=False,
-        classifier_class ='', #'CNN', #'MLP', #'Perceptron', #'GloVe'
-        loss_func_str = '', #nn.BCEWithLogitsLoss(weight=None), #CrossEntropyLoss
+        classifier_class ='',
+        loss_func_str = '',
         with_weights = False,
     )
 
@@ -71,11 +72,8 @@ if __name__ == '__main__':
               'F1 Score': None}
 
     for i in ['Perceptron', 'MLP', 'CNN', 'GloVe']:
-    #for i in ['GloVe']:
         for l in [nn.BCEWithLogitsLoss(), nn.CrossEntropyLoss()]:
-        #for l in [nn.BCEWithLogitsLoss()]:
             for w in [False, True]:
-            #for w in [False]:
                 args.classifier_class = i
                 args.loss_func_str = remove_punctuation(str(l.type(str)))[0]
 
@@ -120,9 +118,6 @@ if __name__ == '__main__':
                 }
 
                 classifier = NLPClassifier(args, dimensions)
-                # check why BCE doesn't work with CNN and MLP
-                # loss_func = nn.BCEWithLogitsLoss() if args.classifier_class == 'Perceptron' else nn.CrossEntropyLoss()  # dataset.class_weights
-                # loss_func = nn.CrossEntropyLoss()
                 loss_func = l
                 if w:
                     if args.loss_func_str == 'BCEWithLogitsLoss':
@@ -156,18 +151,6 @@ if __name__ == '__main__':
                 # Training loop
                 train_state = training_val_loop(args, train_state, dataset, classifier, loss_func, optimizer, scheduler,
                                                 train_bar, val_bar, epoch_bar)
-
-                # print("Training loss: {:.3f}".format(train_state['train_loss'][0]))
-                # print("Training Accuracy: {:.2f}".format(train_state['train_acc'][0]))
-                # print("Training Confusion Matrix: ", train_state['train_confusion_matrix'])
-
-                # print("Validation loss: {:.3f}".format(train_state['val_loss'][0]))
-                # print("Validation Accuracy: {:.2f}".format(train_state['val_acc'][0]))
-                # print("Validation Confusion Matrix: ", train_state['val_confusion_matrix'])
-
-                # print("{} Test loss: {}".format(args.classifier_class, train_state['test_loss']))
-                # print("Test Accuracy: {:.2f}".format(train_state['test_acc']))
-                # print("Test Confusion Matrix: ", train_state['test_confusion_matrix'])
 
                 # Application
                 classifier.load_state_dict(torch.load(train_state['model_filename']))
@@ -203,34 +186,3 @@ if __name__ == '__main__':
                 error_list.append(errors)
 
     print(pd.DataFrame(error_list))
-
-    '''
-    # Inference
-    test_predictor = "fires are running wild"
-
-    classifier = classifier.cpu()
-    prediction = predict_target(test_predictor, classifier, vectorizer, decision_threshold=0.5)
-    print("{} -> {}".format(test_predictor, prediction))
-
-    # Interpretability
-    classifier.fc1.weight.shape
-    # Sort weights
-    fc1_weights = classifier.fc1.weight.detach()[0]
-    _, indices = torch.sort(fc1_weights, dim=0, descending=True)
-    indices = indices.numpy().tolist()
-
-    # Top 20 words
-    print("Influential words in Positive Reviews:")
-    print("--------------------------------------")
-    for i in range(20):
-        print(vectorizer.predictor_vocab.lookup_index(indices[i]))
-
-    print("====\n\n\n")
-
-    # Top 20 negative words
-    print("Influential words in Negative Reviews:")
-    print("--------------------------------------")
-    indices.reverse()
-    for i in range(20):
-        print(vectorizer.predictor_vocab.lookup_index(indices[i]))
-    '''
